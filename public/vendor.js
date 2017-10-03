@@ -88315,20 +88315,85 @@ require.register("components/aframe-custom.js", function(exports, require, modul
  */
 
 AFRAME.registerComponent('lowpoly', {
-  schema: {},
+	schema: {
+		// define properties, types and default vals
+		color: { type: 'string', default: '#FFF' },
+		nodes: { type: 'boolean', default: false },
+		opacity: { type: 'number', default: 1.0 },
+		wireframe: { type: 'boolean', default: false }
+	},
 
-  init: function init() {
-    // Get the ref of the object to which the component is attached
-    var obj = this.el.getObject3D('mesh');
+	init: function init() {
+		// Get the ref of the object to which the component is attached
+		var obj = this.el.getObject3D('mesh');
 
-    // Grab the reference to the main WebGL scene
-    var scene = document.querySelector('a-scene').object3D;
-  },
+		// Grab the reference to the main WebGL scene
+		var scene = document.querySelector('a-scene').object3D;
 
-  update: function update() {
-    // Get the ref of the object to which the component is attached
-    var obj = this.el.getObject3D('mesh');
-  }
+		// modify material color
+		obj.material = new THREE.MeshPhongMaterial({
+			color: this.data.color,
+			shading: THREE.FlatShading
+		});
+
+		// define the geometry for the outer wireframe
+		var frameGeom = new THREE.OctahedronGeometry(2.5, 2);
+
+		// define the material for it
+		var frameMat = new THREE.MeshPhongMaterial({
+			color: '#FFFFFF',
+			opacity: this.data.opacity,
+			transparent: true,
+			wireframe: true
+		});
+
+		// the final mesh is a composition of the geometry and material
+		var icosFrame = new THREE.Mesh(frameGeom, frameMat);
+
+		// set position of the mesh to the position of the sphere
+		var _obj$position = obj.position,
+		    x = _obj$position.x,
+		    y = _obj$position.y,
+		    z = _obj$position.z;
+
+		icosFrame.position.set(0.0, 4, -10.0);
+
+		// if the wireframe prop = true, we attach the new object
+		if (this.data.wireframe) {
+			scene.add(icosFrame);
+		}
+
+		// if nodes attribute = true
+		if (this.data.nodes) {
+			var spheres = new THREE.Group();
+			var vertices = icosFrame.geometry.vertices;
+
+			// traverse the vertices of wireframe and attach small spheres
+			for (var i in vertices) {
+				// create basic sphere
+				var geometry = new THREE.SphereGeometry(0.045, 16, 16);
+				var material = new THREE.MeshBasicMaterial({
+					color: '#FFFFFF',
+					opacity: this.data.opacity,
+					shading: THREE.FlatShading,
+					transparent: true
+				});
+				var sphere = new THREE.Mesh(geometry, material);
+				// reposition them correctly
+				sphere.position.set(vertices[i].x, vertices[i].y + 4, vertices[i].z + -10.0);
+
+				spheres.add(sphere);
+			}
+			scene.add(spheres);
+		}
+	},
+	update: function update() {
+		// get the ref of object ot whicht the component is attached
+		var obj = this.el.getObject3D('mesh');
+
+		// modify color of the material during runtime
+		obj.material.color = new THREE.Color(this.data.color);
+	}
 });
 
 });
@@ -88954,6 +89019,8 @@ var _preact = require('preact');
 
 var _aframeReact = require('aframe-react');
 
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
@@ -88984,9 +89051,20 @@ var Main = function (_Component) {
 	_createClass(Main, [{
 		key: 'render',
 		value: function render() {
+			var _h;
+
 			return (0, _preact.h)(
 				_aframeReact.Scene,
 				{
+					effects: 'bloom, film, fxaa',
+					fxaa: true,
+					bloom: {
+						radius: 0.99
+					},
+					film: {
+						sIntensity: 0.15,
+						nIntensity: 0.15
+					},
 					environment: {
 						preset: 'starry',
 						seed: 2,
@@ -89002,18 +89080,52 @@ var Main = function (_Component) {
 				(0, _preact.h)(
 					_aframeReact.Entity,
 					{ primitive: 'a-camera', 'look-controls': true },
-					(0, _preact.h)(_aframeReact.Entity, { primitive: 'a-cursor',
+					(0, _preact.h)(_aframeReact.Entity, (_h = { primitive: 'a-cursor',
 						cursor: { fuse: false },
 						material: { color: 'white', shader: 'flat', opacity: 0.75 },
-						geometry: { radiusInner: 0.005, radiusOuter: 0.007 }
-					})
+						geometry: { radiusInner: 0.005, radiusOuter: 0.007 },
+						'event-set__1': {
+							_event: 'mouseenter',
+							scale: { x: 1.4, y: 1.4, z: 1.4 }
+						}
+					}, _defineProperty(_h, 'event-set__1', {
+						_event: 'mouseleave',
+						scale: { x: 1, y: 1, z: 1 }
+					}), _defineProperty(_h, 'raycaster', 'objects: .clickable'), _h))
 				),
 				(0, _preact.h)(_aframeReact.Entity, {
+					'class': 'clickable',
+					lowpoly: {
+						color: COLORS[this.state.colorIndex]
+					},
 					primitive: 'a-octahedron',
 					detail: 2,
 					radius: 2,
 					position: this.state.spherePosition,
-					color: '#FAFAF1'
+					color: '#FAFAF1',
+					events: {
+						click: this._handleClick.bind(this)
+					},
+					animation__rotate: {
+						property: 'rotation',
+						dur: 60000,
+						easing: 'linear',
+						loop: true,
+						to: { x: 0, y: 360, z: 0 }
+					},
+					animation__oscillate: {
+						property: 'position',
+						dur: 2000,
+						dir: 'alternative',
+						easing: 'linear',
+						loop: true,
+						from: this.state.spherePosition,
+						to: {
+							x: this.state.spherePosition.x,
+							y: this.state.spherePosition.y + 0.25,
+							z: this.state.spherePosition.z
+						}
+					}
 				}),
 				(0, _preact.h)(_aframeReact.Entity, {
 					primitive: 'a-light',
@@ -89023,6 +89135,13 @@ var Main = function (_Component) {
 					position: { x: 2.5, y: 0.0, z: 0.0 }
 				})
 			);
+		}
+	}, {
+		key: '_handleClick',
+		value: function _handleClick() {
+			this.setState({
+				colorIndex: (this.state.colorIndex + 1) % COLORS.length
+			});
 		}
 	}]);
 
